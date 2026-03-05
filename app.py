@@ -123,6 +123,7 @@ def api_download():
         'quiet':        True,
         'no_warnings':  True,
         'skip_download': True,
+        'geo_bypass':   True,
         # Uncomment to use your browser cookies for age-gated / private content:
         # 'cookiesfrombrowser': ('chrome',),
     }
