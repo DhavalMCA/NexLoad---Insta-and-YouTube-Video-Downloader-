@@ -12,10 +12,15 @@ Endpoints:
 """
 
 import os
+import re
 import tempfile
 import shutil
+import logging
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_caching import Cache
 import yt_dlp
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
@@ -23,7 +28,24 @@ import yt_dlp
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, static_folder=BASE_DIR, template_folder=BASE_DIR)
-CORS(app)   # Allow requests from any origin (needed if frontend is served separately)
+CORS(app)
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+)
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=['200 per day', '50 per hour'],
+    storage_uri='memory://',
+)
+
+# ── Caching ───────────────────────────────────────────────────────────────────
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 600})
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,17 +53,32 @@ PLATFORM_HOSTS = {
     'instagram.com': 'Instagram',
     'youtube.com':   'YouTube',
     'youtu.be':      'YouTube',
+    'tiktok.com':    'TikTok',
+    'facebook.com':  'Facebook',
+    'fb.watch':      'Facebook',
+    'twitter.com':   'Twitter',
+    'x.com':         'Twitter',
+    'reddit.com':    'Reddit',
+    'redd.it':       'Reddit',
 }
 
 SUPPORTED_HEIGHTS = {360, 480, 720, 1080}
 
 
 def detect_platform(url: str):
-    """Return 'Instagram' | 'YouTube' | None based on URL host."""
+    """Return platform name or None based on URL host."""
     for host, name in PLATFORM_HOSTS.items():
         if host in url:
             return name
     return None
+
+
+_URL_RE = re.compile(r'^https?://.+', re.IGNORECASE)
+
+
+def validate_url(url: str) -> bool:
+    """Return True only if the value looks like a proper http(s) URL."""
+    return bool(_URL_RE.match(url))
 
 
 def snap_height(h: int) -> int:
@@ -102,9 +139,42 @@ def serve_js():
     return send_from_directory(BASE_DIR, 'script.js')
 
 
+# ── Cached Info Fetcher ──────────────────────────────────────────────────────
+
+INFO_YDL_OPTS = {
+    'quiet':              True,
+    'no_warnings':        True,
+    'skip_download':      True,
+    'retries':            10,
+    'fragment_retries':   10,
+    'geo_bypass':         True,
+    'geo_bypass_country': 'IN',
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+        },
+    },
+    'http_headers': {
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
+        ),
+    },
+}
+
+
+@cache.memoize(timeout=600)
+def _fetch_info_cached(url: str) -> dict:
+    """Extract video metadata with yt-dlp; result is cached for 10 minutes."""
+    with yt_dlp.YoutubeDL(INFO_YDL_OPTS) as ydl:
+        return ydl.extract_info(url, download=False)
+
+
 # ── API ───────────────────────────────────────────────────────────────────────
 
 @app.route('/api/download', methods=['POST'])
+@limiter.limit('10 per minute')
 def api_download():
     """
     POST /api/download
@@ -113,7 +183,7 @@ def api_download():
     {
         "title":       "...",
         "thumbnail":   "https://...",
-        "platform":    "YouTube | Instagram",
+        "platform":    "Instagram | YouTube | TikTok | Facebook | Twitter | Reddit",
         "resolutions": { "360p": "...", "720p": "...", ... }
     }
     """
@@ -121,36 +191,22 @@ def api_download():
     if not body or not body.get('url'):
         return jsonify({'error': 'URL is required.'}), 400
 
-    url      = body['url'].strip()
-    platform = detect_platform(url)
+    url = body['url'].strip()
 
+    if not validate_url(url):
+        return jsonify({'error': 'Invalid URL. Please provide a valid http(s) link.'}), 400
+
+    platform = detect_platform(url)
     if not platform:
         return jsonify({
-            'error': 'Unsupported platform. Please use an Instagram or YouTube link.'
+            'error': 'Unsupported platform. Supported: Instagram, YouTube, TikTok, Facebook, Twitter, Reddit.'
         }), 400
 
-    ydl_opts = {
-        'quiet':              True,
-        'no_warnings':        True,
-        'skip_download':      True,
-        'geo_bypass':         True,
-        'geo_bypass_country': 'IN',
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web'],
-            },
-        },
-        # Uncomment to use your browser cookies for age-gated / private content:
-        # 'cookiesfrombrowser': ('chrome',),
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        title       = info.get('title')     or 'Unknown Title'
-        thumbnail   = info.get('thumbnail') or ''
-        formats     = info.get('formats')   or []
+        info      = _fetch_info_cached(url)
+        title     = info.get('title')     or 'Unknown Title'
+        thumbnail = info.get('thumbnail') or ''
+        formats   = info.get('formats')   or []
 
         resolutions = extract_resolutions(formats)
 
@@ -166,7 +222,7 @@ def api_download():
                 resolutions.setdefault(f'{h}p', url_f)
 
         if not resolutions:
-            return jsonify({'error': 'No downloadable MP4 formats found for this video.'}), 404
+            return jsonify({'error': 'No downloadable formats found for this video.'}), 404
 
         return jsonify({
             'title':       title,
@@ -177,17 +233,22 @@ def api_download():
 
     except yt_dlp.utils.DownloadError as exc:
         msg = str(exc).replace('ERROR: ', '', 1)
+        app.logger.warning('DownloadError for %s: %s', url, msg)
         if 'not made this video available in your country' in msg or 'geo' in msg.lower():
-            return jsonify({'error': 'This video is geo-restricted and not available in the server\'s region. Try a different video.'}), 400
+            return jsonify({'error': 'This video is geo-restricted. Try a different video.'}), 400
+        if 'sign in' in msg.lower() or 'bot' in msg.lower():
+            return jsonify({'error': 'YouTube bot detection triggered. Please try again in a moment.'}), 429
         return jsonify({'error': msg}), 400
 
     except Exception as exc:
+        app.logger.error('Unexpected error for %s: %s', url, exc, exc_info=True)
         return jsonify({'error': f'Unexpected error: {exc}'}), 500
 
 
 # ── Stream (Merge & Download) ────────────────────────────────────────────────
 
 @app.route('/api/stream', methods=['GET'])
+@limiter.limit('5 per minute')
 def api_stream():
     """
     GET /api/stream?url=<video_url>&quality=<720|480|…>
@@ -201,6 +262,9 @@ def api_stream():
 
     if not url:
         return jsonify({'error': 'URL is required.'}), 400
+
+    if not validate_url(url):
+        return jsonify({'error': 'Invalid URL. Please provide a valid http(s) link.'}), 400
 
     platform = detect_platform(url)
     if not platform:
@@ -218,6 +282,8 @@ def api_stream():
         'quiet':               True,
         'no_warnings':         True,
         'outtmpl':             output_template,
+        'retries':             10,
+        'fragment_retries':    10,
         # Prefer muxed mp4 first; fall back to merging best video + best audio
         'format': (
             f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]'
@@ -232,6 +298,13 @@ def api_stream():
             'youtube': {
                 'player_client': ['android', 'web'],
             },
+        },
+        'http_headers': {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/120.0.0.0 Safari/537.36'
+            ),
         },
     }
 
@@ -279,11 +352,20 @@ def api_stream():
     except yt_dlp.utils.DownloadError as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         msg = str(exc).replace('ERROR: ', '', 1)
+        app.logger.warning('Stream DownloadError for %s: %s', url, msg)
         return jsonify({'error': msg}), 400
 
     except Exception as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        app.logger.error('Stream unexpected error for %s: %s', url, exc, exc_info=True)
         return jsonify({'error': f'Unexpected error: {exc}'}), 500
+
+
+# ── Health Check ──────────────────────────────────────────────────────────────
+
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok'})
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────

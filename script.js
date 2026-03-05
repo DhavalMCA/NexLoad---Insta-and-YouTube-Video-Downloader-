@@ -50,6 +50,50 @@ const PLATFORMS = {
     badgeColor: '#ff0000',
     statusColor: '#ff4444',
   },
+  tiktok: {
+    name: 'TikTok',
+    regex: /tiktok\.com/i,
+    iconCard: 'fa-brands fa-tiktok',
+    iconTag: 'fa-brands fa-tiktok',
+    cardClass: 'tt-mode',
+    focusClass: 'tt-focus',
+    tagClass: 'tt-tag',
+    badgeColor: '#010101',
+    statusColor: '#69c9d0',
+  },
+  facebook: {
+    name: 'Facebook',
+    regex: /facebook\.com|fb\.watch/i,
+    iconCard: 'fa-brands fa-facebook',
+    iconTag: 'fa-brands fa-facebook',
+    cardClass: 'fb-mode',
+    focusClass: 'fb-focus',
+    tagClass: 'fb-tag',
+    badgeColor: '#1877f2',
+    statusColor: '#5b9cf6',
+  },
+  twitter: {
+    name: 'Twitter',
+    regex: /twitter\.com|x\.com/i,
+    iconCard: 'fa-brands fa-x-twitter',
+    iconTag: 'fa-brands fa-x-twitter',
+    cardClass: 'tw-mode',
+    focusClass: 'tw-focus',
+    tagClass: 'tw-tag',
+    badgeColor: '#000000',
+    statusColor: '#1d9bf0',
+  },
+  reddit: {
+    name: 'Reddit',
+    regex: /reddit\.com|redd\.it/i,
+    iconCard: 'fa-brands fa-reddit',
+    iconTag: 'fa-brands fa-reddit',
+    cardClass: 'rd-mode',
+    focusClass: 'rd-focus',
+    tagClass: 'rd-tag',
+    badgeColor: '#ff4500',
+    statusColor: '#ff6534',
+  },
 };
 
 /** Resolutions in display order */
@@ -395,13 +439,25 @@ async function fetchVideoInfoFallback(url, platform) {
       }
     } else if (platform === 'instagram') {
       title = 'Instagram Video';
+    } else if (platform === 'tiktok') {
+      title = 'TikTok Video';
+    } else if (platform === 'facebook') {
+      title = 'Facebook Video';
+    } else if (platform === 'twitter') {
+      title = 'Twitter/X Video';
+    } else if (platform === 'reddit') {
+      title = 'Reddit Video';
     }
 
+    const platformNames = {
+      youtube: 'YouTube', instagram: 'Instagram', tiktok: 'TikTok',
+      facebook: 'Facebook', twitter: 'Twitter', reddit: 'Reddit',
+    };
     // Store quality labels (not real URLs) — resolved by resolveDownloadUrl later
     setSuccess({
       title,
       thumbnail,
-      platform: platform === 'youtube' ? 'YouTube' : 'Instagram',
+      platform: platformNames[platform] || 'Unknown',
       resolutions: { '1080p': '1080', '720p': '720', '480p': '480', '360p': '360' },
     });
   } catch {
@@ -635,18 +691,13 @@ async function handleDownload() {
   try {
     let downloadUrl;
 
-    // Backend mode: resValue is a real HTTPS URL returned by Flask/yt-dlp
+    // Backend mode: always route through /api/stream so the server merges
+    // video+audio DASH streams (Instagram, TikTok, Facebook etc. always DASH).
     if (resValue && (resValue.startsWith('http://') || resValue.startsWith('https://'))) {
-      if (state.platform === 'instagram') {
-        // Instagram always uses separate video + audio DASH streams.
-        // Route through /api/stream so the server merges them before sending.
-        const originalUrl = urlInput.value.trim();
-        const quality = selectedResolution.replace('p', '');
-        downloadUrl = `/api/stream?url=${encodeURIComponent(originalUrl)}&quality=${quality}`;
-        if (btnSpan) btnSpan.textContent = 'Downloading…';
-      } else {
-        downloadUrl = resValue;
-      }
+      const originalUrl = urlInput.value.trim();
+      const quality = selectedResolution.replace('p', '');
+      downloadUrl = `/api/stream?url=${encodeURIComponent(originalUrl)}&quality=${quality}`;
+      if (btnSpan) btnSpan.textContent = 'Downloading…';
     } else {
       // Fallback mode: resValue is a quality string ('1080') — resolve via Invidious/cobalt
       const quality = selectedResolution.replace('p', '');
