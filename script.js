@@ -637,7 +637,16 @@ async function handleDownload() {
 
     // Backend mode: resValue is a real HTTPS URL returned by Flask/yt-dlp
     if (resValue && (resValue.startsWith('http://') || resValue.startsWith('https://'))) {
-      downloadUrl = resValue;
+      if (state.platform === 'instagram') {
+        // Instagram always uses separate video + audio DASH streams.
+        // Route through /api/stream so the server merges them before sending.
+        const originalUrl = urlInput.value.trim();
+        const quality = selectedResolution.replace('p', '');
+        downloadUrl = `/api/stream?url=${encodeURIComponent(originalUrl)}&quality=${quality}`;
+        if (btnSpan) btnSpan.textContent = 'Downloading…';
+      } else {
+        downloadUrl = resValue;
+      }
     } else {
       // Fallback mode: resValue is a quality string ('1080') — resolve via Invidious/cobalt
       const quality = selectedResolution.replace('p', '');

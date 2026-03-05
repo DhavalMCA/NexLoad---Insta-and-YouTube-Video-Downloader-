@@ -12,7 +12,9 @@ Endpoints:
 """
 
 import os
-from flask import Flask, request, jsonify, send_from_directory
+import tempfile
+import shutil
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 import yt_dlp
 
@@ -180,6 +182,107 @@ def api_download():
         return jsonify({'error': msg}), 400
 
     except Exception as exc:
+        return jsonify({'error': f'Unexpected error: {exc}'}), 500
+
+
+# ── Stream (Merge & Download) ────────────────────────────────────────────────
+
+@app.route('/api/stream', methods=['GET'])
+def api_stream():
+    """
+    GET /api/stream?url=<video_url>&quality=<720|480|…>
+    Downloads the video server-side with yt-dlp (merging separate video+audio
+    streams, which Instagram always uses), then streams the resulting MP4 back
+    to the client so the downloaded file always has audio.
+    Requires ffmpeg on PATH for stream merging.
+    """
+    url     = request.args.get('url', '').strip()
+    quality = request.args.get('quality', '720').strip().replace('p', '')
+
+    if not url:
+        return jsonify({'error': 'URL is required.'}), 400
+
+    platform = detect_platform(url)
+    if not platform:
+        return jsonify({'error': 'Unsupported platform.'}), 400
+
+    try:
+        height = int(quality)
+    except ValueError:
+        height = 720
+
+    tmp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(tmp_dir, '%(title).60s.%(ext)s')
+
+    ydl_opts = {
+        'quiet':               True,
+        'no_warnings':         True,
+        'outtmpl':             output_template,
+        # Prefer muxed mp4 first; fall back to merging best video + best audio
+        'format': (
+            f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]'
+            f'/bestvideo[height<={height}]+bestaudio'
+            f'/best[height<={height}]'
+            f'/best'
+        ),
+        'merge_output_format': 'mp4',
+        'geo_bypass':          True,
+        'geo_bypass_country':  'IN',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            },
+        },
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+
+        files = [
+            f for f in os.listdir(tmp_dir)
+            if os.path.isfile(os.path.join(tmp_dir, f))
+        ]
+        if not files:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return jsonify({'error': 'Download produced no output file.'}), 500
+
+        filepath  = os.path.join(tmp_dir, files[0])
+        file_size = os.path.getsize(filepath)
+
+        raw_title  = (info.get('title') if isinstance(info, dict) else None) or 'video'
+        safe_title = ''.join(
+            c for c in raw_title if c.isalnum() or c in ' -_'
+        ).strip()[:60] or 'video'
+
+        def _generate():
+            try:
+                with open(filepath, 'rb') as fh:
+                    while True:
+                        chunk = fh.read(65536)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        return Response(
+            stream_with_context(_generate()),
+            mimetype='video/mp4',
+            headers={
+                'Content-Disposition': f'attachment; filename="{safe_title}.mp4"',
+                'Content-Length':      str(file_size),
+                'Cache-Control':       'no-cache',
+            },
+        )
+
+    except yt_dlp.utils.DownloadError as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        msg = str(exc).replace('ERROR: ', '', 1)
+        return jsonify({'error': msg}), 400
+
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         return jsonify({'error': f'Unexpected error: {exc}'}), 500
 
 
