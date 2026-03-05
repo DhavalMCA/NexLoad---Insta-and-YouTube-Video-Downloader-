@@ -42,23 +42,31 @@ def detect_platform(url: str):
     return None
 
 
+def snap_height(h: int) -> int:
+    """Round a raw pixel height to the nearest standard label."""
+    standards = sorted(SUPPORTED_HEIGHTS)
+    return min(standards, key=lambda s: abs(s - h))
+
+
 def extract_resolutions(formats: list) -> dict:
     """
     Walk yt-dlp format list and return a dict mapping
-    '360p', '480p', '720p', '1080p' → direct MP4 stream URL.
+    '360p', '480p', '720p', '1080p' → direct stream URL.
 
-    Prefers muxed (video + audio) streams over video-only.
+    Accepts mp4 and webm.  Prefers muxed (video+audio) over video-only.
+    Any height is snapped to the nearest standard label.
     """
     best: dict[str, dict] = {}   # height_str → {'url', 'has_audio'}
 
     for fmt in formats:
-        if fmt.get('ext') != 'mp4':
+        ext = fmt.get('ext', '')
+        if ext not in ('mp4', 'webm'):
             continue
         url = fmt.get('url')
         if not url:
             continue
         height = fmt.get('height')
-        if not height or height not in SUPPORTED_HEIGHTS:
+        if not height or height < 100:
             continue
 
         has_audio = fmt.get('acodec', 'none') != 'none'
@@ -66,9 +74,9 @@ def extract_resolutions(formats: list) -> dict:
         if not has_video:
             continue
 
-        key = str(height)
+        key = str(snap_height(height))
         existing = best.get(key)
-        # Prefer muxed stream; if equal, keep first found
+        # Prefer muxed stream; if equal, keep highest bitrate
         if existing is None or (has_audio and not existing['has_audio']):
             best[key] = {'url': url, 'has_audio': has_audio}
 
@@ -124,7 +132,12 @@ def api_download():
         'no_warnings':        True,
         'skip_download':      True,
         'geo_bypass':         True,
-        'geo_bypass_country': 'IN',   # Spoof India to bypass country restrictions
+        'geo_bypass_country': 'IN',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            },
+        },
         # Uncomment to use your browser cookies for age-gated / private content:
         # 'cookiesfrombrowser': ('chrome',),
     }
@@ -139,12 +152,16 @@ def api_download():
 
         resolutions = extract_resolutions(formats)
 
-        # Fallback: include any MP4 heights that weren't in the standard set
+        # Fallback: include any video format regardless of container/height
         if not resolutions:
             for fmt in formats:
-                if fmt.get('ext') == 'mp4' and fmt.get('url') and fmt.get('height'):
-                    h = fmt['height']
-                    resolutions.setdefault(f'{h}p', fmt['url'])
+                url_f = fmt.get('url')
+                h     = fmt.get('height')
+                if not url_f or not h or h < 100:
+                    continue
+                if fmt.get('vcodec', 'none') == 'none':
+                    continue
+                resolutions.setdefault(f'{h}p', url_f)
 
         if not resolutions:
             return jsonify({'error': 'No downloadable MP4 formats found for this video.'}), 404
