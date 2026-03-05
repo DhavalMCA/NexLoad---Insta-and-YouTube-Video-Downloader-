@@ -120,10 +120,11 @@ def api_download():
         }), 400
 
     ydl_opts = {
-        'quiet':        True,
-        'no_warnings':  True,
-        'skip_download': True,
-        'geo_bypass':   True,
+        'quiet':              True,
+        'no_warnings':        True,
+        'skip_download':      True,
+        'geo_bypass':         True,
+        'geo_bypass_country': 'IN',   # Spoof India to bypass country restrictions
         # Uncomment to use your browser cookies for age-gated / private content:
         # 'cookiesfrombrowser': ('chrome',),
     }
