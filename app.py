@@ -79,7 +79,7 @@ def extract_resolutions(formats: list) -> dict:
 
 @app.route('/')
 def index():
-    return send_from_directory(BASE_DIR, 'Index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 
 @app.route('/style.css')
