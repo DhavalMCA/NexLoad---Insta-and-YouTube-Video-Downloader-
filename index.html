@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NexLoad — Social Video Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Syne:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Animated Background -->
+  <div class="bg-canvas" aria-hidden="true">
+    <div class="mesh-layer mesh-1"></div>
+    <div class="mesh-layer mesh-2"></div>
+    <div class="mesh-layer mesh-3"></div>
+    <div class="grid-overlay"></div>
+    <div class="scanline"></div>
+  </div>
+
+  <!-- Floating Orbs -->
+  <div class="orb orb-cyan"    aria-hidden="true"></div>
+  <div class="orb orb-magenta" aria-hidden="true"></div>
+  <div class="orb orb-violet"  aria-hidden="true"></div>
+
+  <!-- ═══════════════════════ HEADER ═══════════════════════ -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-group">
+        <div class="logo-icon" aria-hidden="true">
+          <span class="logo-bracket">[</span>
+          <i class="fa-solid fa-bolt"></i>
+          <span class="logo-bracket">]</span>
+        </div>
+        <div class="logo-text">
+          <span class="logo-nex">Nex</span><span class="logo-load">Load</span>
+        </div>
+      </div>
+      <nav class="header-badge">
+        <span class="badge-dot"></span>
+        <span class="badge-label">v2.4 LIVE</span>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════ HERO ═══════════════════════ -->
+  <section class="hero">
+    <p class="hero-eyebrow">
+      <i class="fa-solid fa-satellite-dish"></i>
+      Multi-platform extraction engine
+    </p>
+    <h1 class="hero-title">
+      <span class="title-line-1">Download</span>
+      <span class="title-line-2">Any Video.</span>
+      <span class="title-line-3">Instantly.</span>
+    </h1>
+    <p class="hero-sub">
+      Paste a link from Instagram or YouTube and get your video in seconds — no login, no limits.
+    </p>
+
+    <!-- Platform Pills -->
+    <div class="platform-pills" role="list" aria-label="Supported platforms">
+      <div class="pill pill-ig" role="listitem">
+        <i class="fa-brands fa-instagram"></i>
+        <span>Instagram Reels</span>
+      </div>
+      <div class="pill pill-ig" role="listitem">
+        <i class="fa-brands fa-instagram"></i>
+        <span>Instagram Posts</span>
+      </div>
+      <div class="pill pill-yt" role="listitem">
+        <i class="fa-brands fa-youtube"></i>
+        <span>YouTube</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ DOWNLOAD CARD ═══════════════════════ -->
+  <main class="main-container">
+    <div class="download-card" role="main">
+      <div class="card-glow" aria-hidden="true"></div>
+
+      <!-- Card Header -->
+      <div class="card-header">
+        <div class="card-title-row">
+          <div class="card-icon-wrap" id="platform-indicator" aria-label="Platform detector">
+            <i class="fa-solid fa-link" id="platform-icon"></i>
+          </div>
+          <div>
+            <h2 class="card-title">Video Extractor</h2>
+            <p class="card-subtitle" id="platform-label">Awaiting URL input…</p>
+          </div>
+        </div>
+        <div class="card-status" aria-live="polite">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="status-text" id="status-text">IDLE</span>
+        </div>
+      </div>
+
+      <!-- URL Input Zone -->
+      <div class="input-zone">
+        <label for="url-input" class="sr-only">Video URL</label>
+        <div class="input-wrap" id="input-wrap">
+          <i class="fa-solid fa-magnifying-glass input-icon" aria-hidden="true"></i>
+          <input
+            type="url"
+            id="url-input"
+            class="url-input"
+            placeholder="Paste Instagram or YouTube link here…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-describedby="url-hint"
+          />
+          <button class="clear-btn" id="clear-btn" aria-label="Clear input" title="Clear" style="display:none;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <p id="url-hint" class="input-hint">Supports: instagram.com · youtube.com · youtu.be · YouTube Shorts</p>
+      </div>
+
+      <!-- Extract Button -->
+      <button class="extract-btn" id="extract-btn" aria-label="Extract video">
+        <span class="btn-inner">
+          <i class="fa-solid fa-wand-magic-sparkles btn-icon" aria-hidden="true"></i>
+          <span class="btn-text">Extract Video</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </span>
+        <span class="btn-shimmer" aria-hidden="true"></span>
+      </button>
+
+      <!-- Error Banner -->
+      <div class="error-banner" id="error-banner" role="alert" aria-live="assertive" style="display:none;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span id="error-text">Something went wrong.</span>
+      </div>
+
+      <!-- Loading State -->
+      <div class="loading-zone" id="loading-zone" style="display:none;" aria-live="polite" aria-label="Loading">
+        <div class="loader-ring">
+          <div class="ring-segment seg-1"></div>
+          <div class="ring-segment seg-2"></div>
+          <div class="ring-segment seg-3"></div>
+          <div class="ring-inner-dot"></div>
+        </div>
+        <div class="loading-text-wrap">
+          <p class="loading-title">Extracting video…</p>
+          <p class="loading-sub" id="loading-sub">Connecting to platform API…</p>
+        </div>
+      </div>
+
+      <!-- ═══════════ RESULT SECTION ═══════════ -->
+      <div class="result-section" id="result-section" style="display:none;" aria-live="polite">
+        <div class="result-divider" aria-hidden="true">
+          <span class="divider-line"></span>
+          <span class="divider-label">RESULT</span>
+          <span class="divider-line"></span>
+        </div>
+
+        <div class="result-card">
+          <!-- Thumbnail -->
+          <div class="thumbnail-wrap">
+            <img id="result-thumbnail" src="" alt="Video thumbnail" class="thumbnail-img" loading="lazy" />
+            <div class="thumbnail-overlay" aria-hidden="true">
+              <div class="play-icon"><i class="fa-solid fa-play"></i></div>
+            </div>
+            <div class="platform-badge" id="result-platform-badge">
+              <i class="fa-brands fa-youtube" id="result-platform-icon"></i>
+              <span id="result-platform-name">YouTube</span>
+            </div>
+          </div>
+
+          <!-- Video Info -->
+          <div class="video-info">
+            <p class="video-platform-tag" id="video-platform-tag">
+              <i class="fa-brands fa-youtube" id="video-tag-icon"></i><span id="video-tag-text"> YouTube</span>
+            </p>
+            <h3 class="video-title" id="result-title">Video Title Loading…</h3>
+
+            <!-- Resolution + Download -->
+            <div class="download-controls">
+              <div class="resolution-wrap">
+                <label for="resolution-select" class="resolution-label">
+                  <i class="fa-solid fa-sliders"></i>
+                  Quality
+                </label>
+                <div class="select-wrap">
+                  <select id="resolution-select" class="resolution-select" aria-label="Select video quality">
+                    <!-- Populated dynamically -->
+                  </select>
+                  <i class="fa-solid fa-chevron-down select-arrow" aria-hidden="true"></i>
+                </div>
+              </div>
+
+              <button class="download-btn" id="download-btn" aria-label="Download selected video quality">
+                <i class="fa-solid fa-download" aria-hidden="true"></i>
+                <span>Download</span>
+              </button>
+            </div>
+
+            <p class="result-note">
+              <i class="fa-solid fa-circle-info"></i>
+              Click download to save the video at selected quality
+            </p>
+          </div>
+        </div>
+      </div>
+      <!-- /result-section -->
+
+    </div>
+    <!-- /download-card -->
+
+    <!-- Stats Bar -->
+    <div class="stats-bar" aria-label="Usage statistics">
+      <div class="stat-item">
+        <span class="stat-number">12M+</span>
+        <span class="stat-label">Downloads</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item">
+        <span class="stat-number">3</span>
+        <span class="stat-label">Platforms</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item">
+        <span class="stat-number">99.9%</span>
+        <span class="stat-label">Uptime</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item">
+        <span class="stat-number">0</span>
+        <span class="stat-label">Login needed</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══════════════════════ HOW IT WORKS ═══════════════════════ -->
+  <section class="how-section" aria-labelledby="how-title">
+    <h2 class="how-title" id="how-title">
+      <span class="how-tag">// HOW IT WORKS</span>
+    </h2>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num">01</div>
+        <div class="step-icon"><i class="fa-solid fa-paste"></i></div>
+        <h3 class="step-title">Paste Link</h3>
+        <p class="step-desc">Copy any Instagram Reel, Post, or YouTube video URL and paste it into the input field above.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02</div>
+        <div class="step-icon"><i class="fa-solid fa-bolt"></i></div>
+        <h3 class="step-title">Extract</h3>
+        <p class="step-desc">Our engine detects the platform, fetches video metadata and available download resolutions instantly.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03</div>
+        <div class="step-icon"><i class="fa-solid fa-download"></i></div>
+        <h3 class="step-title">Download</h3>
+        <p class="step-desc">Choose your preferred quality — 360p to 1080p — and download directly to your device.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <span class="logo-nex">Nex</span><span class="logo-load">Load</span>
+      </div>
+      <p class="footer-copy">© 2025 NexLoad. For personal use only. Respect content creators.</p>
+      <div class="footer-links">
+        <a href="#" class="footer-link">Privacy</a>
+        <a href="#" class="footer-link">Terms</a>
+        <a href="#" class="footer-link">API</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
