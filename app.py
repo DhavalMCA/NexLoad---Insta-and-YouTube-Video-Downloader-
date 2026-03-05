@@ -157,8 +157,9 @@ def api_download():
         })
 
     except yt_dlp.utils.DownloadError as exc:
-        # Strip yt-dlp's verbose prefix for a cleaner user-facing message
         msg = str(exc).replace('ERROR: ', '', 1)
+        if 'not made this video available in your country' in msg or 'geo' in msg.lower():
+            return jsonify({'error': 'This video is geo-restricted and not available in the server\'s region. Try a different video.'}), 400
         return jsonify({'error': msg}), 400
 
     except Exception as exc:
