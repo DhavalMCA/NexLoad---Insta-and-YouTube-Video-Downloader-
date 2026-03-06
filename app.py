@@ -141,24 +141,31 @@ def serve_js():
 
 # ── Cached Info Fetcher ──────────────────────────────────────────────────────
 
+# Optional: set YOUTUBE_COOKIES_FILE env var to a Netscape-format cookies.txt
+# exported from your browser to bypass YouTube bot/sign-in challenges.
+_YT_COOKIES_FILE = os.environ.get('YOUTUBE_COOKIES_FILE', '') or None
+
 INFO_YDL_OPTS = {
-    'quiet':              True,
-    'no_warnings':        True,
-    'skip_download':      True,
-    'retries':            10,
-    'fragment_retries':   10,
-    'geo_bypass':         True,
-    'geo_bypass_country': 'IN',
+    'quiet':                   True,
+    'no_warnings':             True,
+    'skip_download':           True,
+    'retries':                 10,
+    'fragment_retries':        10,
+    'sleep_interval_requests': 1,
+    'geo_bypass':              True,
+    'geo_bypass_country':      'IN',
+    **({'cookiefile': _YT_COOKIES_FILE} if _YT_COOKIES_FILE else {}),
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web'],
+            # ios is the least bot-flagged client; mweb / web as fallbacks
+            'player_client': ['ios', 'mweb', 'web'],
         },
     },
     'http_headers': {
         'User-Agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
             'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/120.0.0.0 Safari/537.36'
+            'Chrome/124.0.0.0 Safari/537.36'
         ),
     },
 }
@@ -236,8 +243,15 @@ def api_download():
         app.logger.warning('DownloadError for %s: %s', url, msg)
         if 'not made this video available in your country' in msg or 'geo' in msg.lower():
             return jsonify({'error': 'This video is geo-restricted. Try a different video.'}), 400
-        if 'sign in' in msg.lower() or 'bot' in msg.lower():
-            return jsonify({'error': 'YouTube bot detection triggered. Please try again in a moment.'}), 429
+        if 'sign in' in msg.lower() or 'bot' in msg.lower() or 'po_token' in msg.lower():
+            return jsonify({
+                'error': (
+                    'YouTube is blocking automated access. '
+                    'Set the YOUTUBE_COOKIES_FILE environment variable to a '
+                    'cookies.txt file exported from a logged-in Chrome/Firefox session, '
+                    'then restart the server.'
+                )
+            }), 429
         return jsonify({'error': msg}), 400
 
     except Exception as exc:
@@ -291,19 +305,21 @@ def api_stream():
             f'/best[height<={height}]'
             f'/best'
         ),
-        'merge_output_format': 'mp4',
-        'geo_bypass':          True,
-        'geo_bypass_country':  'IN',
+        'merge_output_format':    'mp4',
+        'geo_bypass':              True,
+        'geo_bypass_country':      'IN',
+        'sleep_interval_requests': 1,
+        **({'cookiefile': _YT_COOKIES_FILE} if _YT_COOKIES_FILE else {}),
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
+                'player_client': ['ios', 'mweb', 'web'],
             },
         },
         'http_headers': {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                 'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/120.0.0.0 Safari/537.36'
+                'Chrome/124.0.0.0 Safari/537.36'
             ),
         },
     }
