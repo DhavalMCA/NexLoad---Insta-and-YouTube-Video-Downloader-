@@ -191,6 +191,20 @@ def _cookie_opts() -> dict:
     return {}
 
 
+def _yt_extractor_args() -> dict:
+    """Return YouTube extractor_args. Skip JS player config when no cookies."""
+    args: dict = {
+        # tv_embedded is the least bot-flagged client on cloud IPs.
+        # With cookies it will also pass age-gate checks.
+        'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
+    }
+    if not _YT_COOKIES_FILE and not _YT_COOKIES_BROWSER:
+        # Without cookies, skip the webpage and JS player configs that
+        # are most likely to trigger bot detection / nsig challenges.
+        args['player_skip'] = ['configs', 'js']
+    return args
+
+
 INFO_YDL_OPTS = {
     'quiet':                   True,
     'no_warnings':             True,
@@ -201,13 +215,7 @@ INFO_YDL_OPTS = {
     'geo_bypass':              True,
     'geo_bypass_country':      'IN',
     **_cookie_opts(),
-    'extractor_args': {
-        'youtube': {
-            # tv_embedded bypasses most bot/age-gate checks;
-            # ios / mweb / web are progressively more restricted fallbacks.
-            'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
-        },
-    },
+    'extractor_args': {'youtube': _yt_extractor_args()},
     'http_headers': {
         'User-Agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -357,11 +365,7 @@ def api_stream():
         'geo_bypass_country':      'IN',
         'sleep_interval_requests': 1,
         **_cookie_opts(),
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
-            },
-        },
+        'extractor_args': {'youtube': _yt_extractor_args()},
         'http_headers': {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -437,7 +441,27 @@ def api_stream():
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok'})
+    cookie_status = (
+        'file'    if _YT_COOKIES_FILE    else
+        'browser' if _YT_COOKIES_BROWSER else
+        'none'
+    )
+    return jsonify({'status': 'ok', 'yt_cookies': cookie_status})
+
+
+# ── Startup diagnostics ───────────────────────────────────────────────────────
+
+_startup_logger = logging.getLogger('nexload.startup')
+
+if _YT_COOKIES_FILE:
+    _startup_logger.info('YouTube cookies: loaded from file (%s)', _YT_COOKIES_FILE)
+elif _YT_COOKIES_BROWSER:
+    _startup_logger.info('YouTube cookies: will extract from browser (%s)', _YT_COOKIES_BROWSER)
+else:
+    _startup_logger.warning(
+        'YouTube cookies: NOT configured — YouTube downloads may be blocked. '
+        'Run get_yt_cookies.ps1 and set YOUTUBE_COOKIES_B64 in Render.'
+    )
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
