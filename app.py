@@ -214,6 +214,10 @@ INFO_YDL_OPTS = {
     'sleep_interval_requests': 1,
     'geo_bypass':              True,
     'geo_bypass_country':      'IN',
+    # Impersonate Chrome's TLS fingerprint + HTTP/2 settings via curl_cffi.
+    # This is the strongest no-cookie bypass available — spoofs the full
+    # browser network stack, not just the User-Agent string.
+    'impersonate':             'chrome',
     **_cookie_opts(),
     'extractor_args': {'youtube': _yt_extractor_args()},
     'http_headers': {
@@ -364,6 +368,7 @@ def api_stream():
         'geo_bypass':              True,
         'geo_bypass_country':      'IN',
         'sleep_interval_requests': 1,
+        'impersonate':             'chrome',
         **_cookie_opts(),
         'extractor_args': {'youtube': _yt_extractor_args()},
         'http_headers': {
