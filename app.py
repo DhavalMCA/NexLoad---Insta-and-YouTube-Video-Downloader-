@@ -18,6 +18,8 @@ import tempfile
 import shutil
 import logging
 import atexit
+import webbrowser
+from threading import Timer
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -163,6 +165,12 @@ def serve_js():
 _YT_COOKIES_FILE    = os.environ.get('YOUTUBE_COOKIES_FILE',    '') or None
 _YT_COOKIES_BROWSER = os.environ.get('YOUTUBE_COOKIES_BROWSER', '') or None
 _YT_COOKIES_B64     = os.environ.get('YOUTUBE_COOKIES_B64',     '') or None
+
+# On a local machine with no explicit cookie config, default to Chrome.
+# This automatically uses your logged-in YouTube session — no export needed.
+_IS_CLOUD = bool(os.environ.get('RENDER') or os.environ.get('DYNO') or os.environ.get('RAILWAY_ENVIRONMENT'))
+if not _YT_COOKIES_FILE and not _YT_COOKIES_BROWSER and not _YT_COOKIES_B64 and not _IS_CLOUD:
+    _YT_COOKIES_BROWSER = 'chrome'
 
 # Decode base64 cookies to a temp file at startup (survives for process lifetime)
 _cookies_b64_tmpfile: str | None = None
@@ -466,15 +474,15 @@ _startup_logger = logging.getLogger('nexload.startup')
 if _YT_COOKIES_FILE:
     _startup_logger.info('YouTube cookies: loaded from file (%s)', _YT_COOKIES_FILE)
 elif _YT_COOKIES_BROWSER:
-    _startup_logger.info('YouTube cookies: will extract from browser (%s)', _YT_COOKIES_BROWSER)
+    _startup_logger.info('YouTube cookies: using browser "%s" (local mode)', _YT_COOKIES_BROWSER)
 else:
     _startup_logger.warning(
         'YouTube cookies: NOT configured — YouTube downloads may be blocked. '
-        'Run get_yt_cookies.ps1 and set YOUTUBE_COOKIES_B64 in Render.'
+        'Set YOUTUBE_COOKIES_B64 env var (cloud) or YOUTUBE_COOKIES_BROWSER=chrome (local).'
     )
 
 if _IMPERSONATE:
-    _startup_logger.info('Browser impersonation: enabled (curl_cffi chrome)')
+    _startup_logger.info('Browser impersonation: enabled (curl_cffi %s)', _IMPERSONATE)
 else:
     _startup_logger.warning('Browser impersonation: disabled (curl_cffi not installed)')
 
@@ -483,4 +491,8 @@ else:
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    url  = f'http://127.0.0.1:{port}'
+    # Auto-open browser after 1.2 s (gives Flask time to start)
+    Timer(1.2, lambda: webbrowser.open(url)).start()
+    print(f'\n  NexLoad running at {url}\n')
     app.run(debug=False, host='0.0.0.0', port=port)
