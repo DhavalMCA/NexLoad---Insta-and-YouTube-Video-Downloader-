@@ -141,9 +141,24 @@ def serve_js():
 
 # ── Cached Info Fetcher ──────────────────────────────────────────────────────
 
-# Optional: set YOUTUBE_COOKIES_FILE env var to a Netscape-format cookies.txt
-# exported from your browser to bypass YouTube bot/sign-in challenges.
-_YT_COOKIES_FILE = os.environ.get('YOUTUBE_COOKIES_FILE', '') or None
+# ── YouTube cookie / bot-bypass config ──────────────────────────────────────
+# Option A – point to a Netscape cookies.txt exported from your browser:
+#   set YOUTUBE_COOKIES_FILE=C:\path\to\cookies.txt
+# Option B – let yt-dlp pull cookies live from an installed browser:
+#   set YOUTUBE_COOKIES_BROWSER=chrome   (or firefox / edge / chromium)
+# Option B requires the browser to be installed on the same machine as the server.
+_YT_COOKIES_FILE    = os.environ.get('YOUTUBE_COOKIES_FILE',    '') or None
+_YT_COOKIES_BROWSER = os.environ.get('YOUTUBE_COOKIES_BROWSER', '') or None
+
+
+def _cookie_opts() -> dict:
+    """Return yt-dlp cookie kwargs based on env-var config."""
+    if _YT_COOKIES_FILE:
+        return {'cookiefile': _YT_COOKIES_FILE}
+    if _YT_COOKIES_BROWSER:
+        return {'cookiesfrombrowser': (_YT_COOKIES_BROWSER,)}
+    return {}
+
 
 INFO_YDL_OPTS = {
     'quiet':                   True,
@@ -154,11 +169,12 @@ INFO_YDL_OPTS = {
     'sleep_interval_requests': 1,
     'geo_bypass':              True,
     'geo_bypass_country':      'IN',
-    **({'cookiefile': _YT_COOKIES_FILE} if _YT_COOKIES_FILE else {}),
+    **_cookie_opts(),
     'extractor_args': {
         'youtube': {
-            # ios is the least bot-flagged client; mweb / web as fallbacks
-            'player_client': ['ios', 'mweb', 'web'],
+            # tv_embedded bypasses most bot/age-gate checks;
+            # ios / mweb / web are progressively more restricted fallbacks.
+            'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
         },
     },
     'http_headers': {
@@ -309,10 +325,10 @@ def api_stream():
         'geo_bypass':              True,
         'geo_bypass_country':      'IN',
         'sleep_interval_requests': 1,
-        **({'cookiefile': _YT_COOKIES_FILE} if _YT_COOKIES_FILE else {}),
+        **_cookie_opts(),
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'mweb', 'web'],
+                'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
             },
         },
         'http_headers': {
