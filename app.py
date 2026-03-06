@@ -25,6 +25,13 @@ from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 import yt_dlp
 
+# Check curl_cffi availability for browser impersonation
+try:
+    import curl_cffi  # noqa: F401
+    _IMPERSONATE = 'chrome'
+except ImportError:
+    _IMPERSONATE = None
+
 # ── App Setup ─────────────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -214,10 +221,8 @@ INFO_YDL_OPTS = {
     'sleep_interval_requests': 1,
     'geo_bypass':              True,
     'geo_bypass_country':      'IN',
-    # Impersonate Chrome's TLS fingerprint + HTTP/2 settings via curl_cffi.
-    # This is the strongest no-cookie bypass available — spoofs the full
-    # browser network stack, not just the User-Agent string.
-    'impersonate':             'chrome',
+    # Impersonate Chrome's TLS fingerprint via curl_cffi (if installed).
+    **({'impersonate': _IMPERSONATE} if _IMPERSONATE else {}),
     **_cookie_opts(),
     'extractor_args': {'youtube': _yt_extractor_args()},
     'http_headers': {
@@ -315,7 +320,8 @@ def api_download():
 
     except Exception as exc:
         app.logger.error('Unexpected error for %s: %s', url, exc, exc_info=True)
-        return jsonify({'error': f'Unexpected error: {exc}'}), 500
+        msg = str(exc).strip() or type(exc).__name__
+        return jsonify({'error': f'Unexpected error: {msg}'}), 500
 
 
 # ── Stream (Merge & Download) ────────────────────────────────────────────────
@@ -368,7 +374,7 @@ def api_stream():
         'geo_bypass':              True,
         'geo_bypass_country':      'IN',
         'sleep_interval_requests': 1,
-        'impersonate':             'chrome',
+        **({'impersonate': _IMPERSONATE} if _IMPERSONATE else {}),
         **_cookie_opts(),
         'extractor_args': {'youtube': _yt_extractor_args()},
         'http_headers': {
@@ -439,7 +445,8 @@ def api_stream():
     except Exception as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         app.logger.error('Stream unexpected error for %s: %s', url, exc, exc_info=True)
-        return jsonify({'error': f'Unexpected error: {exc}'}), 500
+        msg = str(exc).strip() or type(exc).__name__
+        return jsonify({'error': f'Unexpected error: {msg}'}), 500
 
 
 # ── Health Check ──────────────────────────────────────────────────────────────
@@ -467,6 +474,11 @@ else:
         'YouTube cookies: NOT configured — YouTube downloads may be blocked. '
         'Run get_yt_cookies.ps1 and set YOUTUBE_COOKIES_B64 in Render.'
     )
+
+if _IMPERSONATE:
+    _startup_logger.info('Browser impersonation: enabled (curl_cffi chrome)')
+else:
+    _startup_logger.warning('Browser impersonation: disabled (curl_cffi not installed)')
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
