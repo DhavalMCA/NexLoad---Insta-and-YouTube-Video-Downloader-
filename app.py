@@ -201,11 +201,11 @@ def _cookie_opts() -> dict:
 def _yt_extractor_args() -> dict:
     """Return YouTube extractor_args."""
     return {
-        # tv_embedded is the least bot-flagged client on cloud IPs.
-        # ios / mweb / web are progressively more restricted fallbacks.
-        # NOTE: do NOT add player_skip here — it prevents yt-dlp from
-        # fetching the format list and causes 'format not available' errors.
-        'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
+        # 'web' must be first — it returns the full format list.
+        # tv_embedded / ios are lower-friction fallbacks for bot-blocked IPs.
+        # With YOUTUBE_COOKIES_B64 set, 'web' authenticates and all formats
+        # (including age-restricted) become available.
+        'player_client': ['web', 'tv_embedded', 'ios', 'mweb'],
     }
 
 
@@ -360,16 +360,13 @@ def api_stream():
         'outtmpl':             output_template,
         'retries':             10,
         'fragment_retries':    10,
-        # Prefer muxed mp4; progressively relax constraints until something matches.
+        # Progressively relax quality/container constraints until something matches.
         'format': (
             f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]'
             f'/bestvideo[height<={height}][ext=mp4]+bestaudio'
-            f'/bestvideo[height<={height}]+bestaudio[ext=m4a]'
             f'/bestvideo[height<={height}]+bestaudio'
-            f'/best[height<={height}][ext=mp4]'
             f'/best[height<={height}]'
-            f'/bestvideo+bestaudio'
-            f'/best'
+            f'/bestvideo+bestaudio/best'
         ),
         'merge_output_format':    'mp4',
         'geo_bypass':              True,
