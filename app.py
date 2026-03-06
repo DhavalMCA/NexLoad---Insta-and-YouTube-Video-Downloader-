@@ -13,9 +13,11 @@ Endpoints:
 
 import os
 import re
+import base64
 import tempfile
 import shutil
 import logging
+import atexit
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -142,13 +144,42 @@ def serve_js():
 # ── Cached Info Fetcher ──────────────────────────────────────────────────────
 
 # ── YouTube cookie / bot-bypass config ──────────────────────────────────────
-# Option A – point to a Netscape cookies.txt exported from your browser:
+# --- Option A: path to a Netscape cookies.txt (local/dev) ---
 #   set YOUTUBE_COOKIES_FILE=C:\path\to\cookies.txt
-# Option B – let yt-dlp pull cookies live from an installed browser:
+# --- Option B: base64-encoded cookies.txt content (cloud / Render) ---
+#   In Render dashboard → Environment, add:
+#   YOUTUBE_COOKIES_B64 = <paste base64-encoded cookies.txt here>
+#   Generate with:  base64 -w 0 cookies.txt   (Linux/Mac)
+#                   [Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))  (PowerShell)
+# --- Option C: auto-extract from a locally installed browser (dev only) ---
 #   set YOUTUBE_COOKIES_BROWSER=chrome   (or firefox / edge / chromium)
-# Option B requires the browser to be installed on the same machine as the server.
 _YT_COOKIES_FILE    = os.environ.get('YOUTUBE_COOKIES_FILE',    '') or None
 _YT_COOKIES_BROWSER = os.environ.get('YOUTUBE_COOKIES_BROWSER', '') or None
+_YT_COOKIES_B64     = os.environ.get('YOUTUBE_COOKIES_B64',     '') or None
+
+# Decode base64 cookies to a temp file at startup (survives for process lifetime)
+_cookies_b64_tmpfile: str | None = None
+if _YT_COOKIES_B64 and not _YT_COOKIES_FILE:
+    try:
+        _tf = tempfile.NamedTemporaryFile(mode='wb', suffix='_yt_cookies.txt', delete=False)
+        _tf.write(base64.b64decode(_YT_COOKIES_B64))
+        _tf.close()
+        _YT_COOKIES_FILE      = _tf.name
+        _cookies_b64_tmpfile  = _tf.name
+        logging.getLogger(__name__).info('Loaded YouTube cookies from YOUTUBE_COOKIES_B64')
+    except Exception as _e:
+        logging.getLogger(__name__).warning('Failed to decode YOUTUBE_COOKIES_B64: %s', _e)
+
+
+def _cleanup_cookies_tmpfile():
+    if _cookies_b64_tmpfile:
+        try:
+            os.unlink(_cookies_b64_tmpfile)
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_cookies_tmpfile)
 
 
 def _cookie_opts() -> dict:
@@ -262,10 +293,10 @@ def api_download():
         if 'sign in' in msg.lower() or 'bot' in msg.lower() or 'po_token' in msg.lower():
             return jsonify({
                 'error': (
-                    'YouTube is blocking automated access. '
-                    'Set the YOUTUBE_COOKIES_FILE environment variable to a '
-                    'cookies.txt file exported from a logged-in Chrome/Firefox session, '
-                    'then restart the server.'
+                    'YouTube is blocking this server\'s IP. '
+                    'Fix: export cookies.txt from a logged-in YouTube tab, '
+                    'base64-encode it, and set YOUTUBE_COOKIES_B64 in your '
+                    'Render environment variables, then redeploy.'
                 )
             }), 429
         return jsonify({'error': msg}), 400
@@ -385,6 +416,15 @@ def api_stream():
         shutil.rmtree(tmp_dir, ignore_errors=True)
         msg = str(exc).replace('ERROR: ', '', 1)
         app.logger.warning('Stream DownloadError for %s: %s', url, msg)
+        if 'sign in' in msg.lower() or 'bot' in msg.lower() or 'po_token' in msg.lower():
+            return jsonify({
+                'error': (
+                    'YouTube is blocking this server\'s IP. '
+                    'Fix: export cookies.txt from a logged-in YouTube tab, '
+                    'base64-encode it, and set YOUTUBE_COOKIES_B64 in your '
+                    'Render environment variables, then redeploy.'
+                )
+            }), 429
         return jsonify({'error': msg}), 400
 
     except Exception as exc:

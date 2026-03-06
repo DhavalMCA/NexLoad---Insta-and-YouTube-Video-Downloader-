@@ -1,6 +1,6 @@
-flask
-flask-cors
-yt-dlp
-gunicorn
-flask-limiter
-flask-caching
+Flask>=3.0,<4
+flask-cors>=4.0
+yt-dlp>=2024.1.0
+gunicorn>=21.0
+flask-limiter>=3.5
+Flask-Caching>=2.1
