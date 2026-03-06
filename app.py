@@ -199,17 +199,14 @@ def _cookie_opts() -> dict:
 
 
 def _yt_extractor_args() -> dict:
-    """Return YouTube extractor_args. Skip JS player config when no cookies."""
-    args: dict = {
+    """Return YouTube extractor_args."""
+    return {
         # tv_embedded is the least bot-flagged client on cloud IPs.
-        # With cookies it will also pass age-gate checks.
+        # ios / mweb / web are progressively more restricted fallbacks.
+        # NOTE: do NOT add player_skip here — it prevents yt-dlp from
+        # fetching the format list and causes 'format not available' errors.
         'player_client': ['tv_embedded', 'ios', 'mweb', 'web'],
     }
-    if not _YT_COOKIES_FILE and not _YT_COOKIES_BROWSER:
-        # Without cookies, skip the webpage and JS player configs that
-        # are most likely to trigger bot detection / nsig challenges.
-        args['player_skip'] = ['configs', 'js']
-    return args
 
 
 INFO_YDL_OPTS = {
@@ -363,11 +360,15 @@ def api_stream():
         'outtmpl':             output_template,
         'retries':             10,
         'fragment_retries':    10,
-        # Prefer muxed mp4 first; fall back to merging best video + best audio
+        # Prefer muxed mp4; progressively relax constraints until something matches.
         'format': (
             f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]'
+            f'/bestvideo[height<={height}][ext=mp4]+bestaudio'
+            f'/bestvideo[height<={height}]+bestaudio[ext=m4a]'
             f'/bestvideo[height<={height}]+bestaudio'
+            f'/best[height<={height}][ext=mp4]'
             f'/best[height<={height}]'
+            f'/bestvideo+bestaudio'
             f'/best'
         ),
         'merge_output_format':    'mp4',
